@@ -1,55 +1,60 @@
 # DoomScroll — Instagram focus browser
 
-Version 0.3 replaces screen broadcasting with an iOS WKWebView browser. It opens
-Instagram's website at Messages. Profiles and photo posts remain accessible.
-Reels, profile Reels tabs, legacy TV routes, and Explore are blocked inside the
-browser. Inline video and audio are disabled, including shared videos in DMs.
-There is no ReplayKit target, screen capture, VPN, or paid capability.
+Version 0.4 restores Stories and media playback. Messages open first. The Following
+button requests Instagram's Following feed (`/?variant=following`) so users can
+see posts and Reels from accounts they follow. Root/home links request this view
+as well. Following is supplied by Instagram, not a locally verified follower
+allowlist; availability and the contents of that feed are controlled by Instagram.
+There is no silent fallback to the recommended feed.
 
-## What works by design
+## One post at a time
 
-- Instagram owns the login page and handles messaging; there is no unofficial
-  messaging API, credential scraping, or separate backend.
-- Persistent WebKit website storage keeps your session across launches.
-- Messages and Feed buttons, back navigation, reload, loading/error states,
-  and an explicit clear-login control.
-- Native navigation checks reject Reels routes, external top-level websites,
-  and custom app schemes. Links stay inside the browser.
-- A document-start script catches SPA history changes, shared Reel clicks,
-  back/forward restoration, and dynamically inserted Reels links.
-- A WebKit content rule blocks media requests; page CSS hides players and
-  event handlers pause playback attempts. Photo resources remain enabled.
-- The browser does not load Instagram until its filter resources are installed.
+A specific Reel or post permalink (`/reel/CODE/`, `/reels/CODE/`, `/p/CODE/`,
+or `/tv/CODE/`) opens a standalone document locked to that code. This includes
+Reels shared in DMs and Reels opened from Following. In that document:
 
-## Limits and device testing
+- Swipe, wheel, keyboard scrolling and scroll-container movement are stopped.
+- Native navigation and JavaScript history updates reject a different post code.
+- Next-post links and labeled next/previous post controls are disabled.
+- Only the first video element can play; additional/recycled players are paused.
+- Playback ending does not trigger the page's auto-advance handler.
+- A Done button returns to the prior page so another post can be chosen manually.
 
-This is a first prototype, not a verified replacement for every Instagram feature.
-CI tests filtering logic and compiles/packages the app. An authenticated physical
-iPhone test is still needed for login, two-factor checks, messages, and uploads.
-Instagram may restrict embedded browsers or alter its markup/routes. Filters are
-best-effort and can need updates; they are not a system-wide or tamper-proof block.
+The lock applies to individual photo post permalinks too. Following-feed scrolling,
+message-list scrolling, and Story gestures remain available. Stories and DMs are
+not subject to the single-post media lock. The old global media request block and
+blanket video/audio hiding have been removed. Calls still have no microphone/camera
+permission; background push notifications are not provided.
 
-Use Instagram credentials on Instagram's own page. Facebook sign-in and external
-websites are intentionally unsupported. Voice notes, calls, inline videos, and
-background push notifications are not supported. Existing native Instagram apps
-are unaffected. This app is not affiliated with Instagram or Meta.
+## Limitations and testing
 
-## Install and test
+This is website filtering, not an Instagram API integration or a system-wide block.
+Instagram markup, routes, and player behavior can change. The first video in an
+individual post document is treated as that post's video. If Instagram replaces
+that player or changes its media source, playback stops conservatively; Reload
+reopens the selected post. Following requests do not independently prove that
+every item Instagram returns is from a followed account.
 
-1. Download the latest successful GitHub Actions artifact
-   `DoomScroll-unsigned-ipa`, extract the IPA, and sideload with AltStore/free Apple ID.
-   Version 0.3 contains only the main app, with no broadcast extension.
-2. Open DoomScroll and sign in directly on Instagram, completing any login checks.
-3. Confirm the inbox loads; open a conversation and send a test message yourself.
-4. Open a profile or photo post; verify text, images, and messaging remain usable.
-5. Try a shared Reel link, the Reels tab, a profile's Reels tab, and Explore.
-   These should remain hidden or blocked. Try back/forward navigation as well.
-6. Confirm video/audio players do not play, including media inside conversations.
-7. Relaunch to test session persistence. Use About > Clear login and website data
-   when you want to remove this app's local website session.
+CI checks navigation policy, synthetic DOM/history/media cases, compilation, and
+IPA packaging. It does not validate the current authenticated Instagram DOM.
+The prior version's login and messaging were confirmed by the user; v0.4 Stories,
+Following, and single-Reel behavior still need physical-iPhone validation.
 
-DoomScroll never logs message text, credentials, or page HTML. Its filter inspects
-link destinations and media elements only; the app has no separate server.
+Install the latest successful `DoomScroll-unsigned-ipa` artifact using AltStore.
+There is no recording extension and no paid entitlement. Test:
+
+1. Play both photo and video Stories; swipe to the next Story.
+2. Open Following and play a followed account's video in the feed.
+3. Open a Reel from a message, play/pause it, and try swiping to another Reel.
+4. Let it end; verify no next Reel starts. Tap Done and open a different shared Reel.
+5. Test a Reel permalink that uses `/p/`, back navigation, reload, and profile links.
+6. Confirm the Reels browsing tab, profile Reels grid, and Explore remain blocked.
+
+Login and website data stay in persistent WebKit storage. Instagram handles the
+login and messaging; DoomScroll has no separate backend, does not read passwords
+or message text, and does not log page HTML. About > Clear login removes local
+website data. Facebook sign-in and external top-level sites remain unsupported.
+This app is not affiliated with Instagram or Meta.
 
 ## Build and verification
 

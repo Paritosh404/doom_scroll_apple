@@ -8,6 +8,7 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
     @Published var errorMessage: String?
     @Published var notice: String?
     @Published var ready = false
+    @Published private(set) var singlePostID: String?
 
     let webView: WKWebView
     private var observations: [NSKeyValueObservation] = []
@@ -18,7 +19,7 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
-        configuration.mediaTypesRequiringUserActionForPlayback = .all
+        configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -49,25 +50,11 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
         webView.configuration.userContentController.addUserScript(
             WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
-        // Block media loads too; DOM filtering alone cannot prevent every player.
-        let rules = """
-        [{"trigger":{"url-filter":".*","resource-type":["media"]},"action":{"type":"block"}}]
-        """
-        WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "DoomScroll-NoMedia-v1", encodedContentRuleList: rules
-        ) { [weak self] list, error in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard let list, error == nil else {
-                    self.errorMessage = "The browsing filter could not start. Close and reopen DoomScroll."
-                    return
-                }
-                self.webView.configuration.userContentController.add(list)
-                self.filtersInstalled = true
-                self.ready = true
-                self.open(BrowserPolicy.inbox)
-            }
-        }
+        // Media is allowed for Stories, messages, and Following posts.
+        // The document script and navigation policy restrict single-post viewers.
+        filtersInstalled = true
+        ready = true
+        open(BrowserPolicy.inbox)
     }
 
     func open(_ url: URL) {
@@ -78,7 +65,8 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
         }
         errorMessage = nil
         notice = nil
-        webView.load(URLRequest(url: url))
+        singlePostID = BrowserPolicy.postID(for: url)
+        webView.load(URLRequest(url: BrowserPolicy.followingURL(for: url)))
     }
 
     func reload() {
@@ -91,12 +79,13 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
     func back() {
         guard webView.canGoBack else { return }
         errorMessage = nil
+        singlePostID = nil
         webView.goBack()
     }
 
     private func showBlocked(_ decision: BrowserPolicy.Decision) {
         notice = decision == .reels
-            ? "Reels and Explore are turned off in DoomScroll."
+            ? "Open one Reel at a time. Return to Messages or Following to choose another."
             : "This link leaves Instagram. Use Instagram login here; app links and outside websites stay closed."
     }
 
@@ -111,17 +100,19 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
             decisionHandler(["https", "about"].contains(url.scheme ?? "") ? .allow : .cancel)
             return
         }
-        let decision = BrowserPolicy.decision(for: url)
+        let decision = BrowserPolicy.decision(for: url, lockedPostID: singlePostID)
         guard decision == .allow else {
             decisionHandler(.cancel)
             showBlocked(decision)
             return
         }
-        if action.targetFrame == nil || action.navigationType == .linkActivated {
+        let destination = BrowserPolicy.followingURL(for: url)
+        if destination != url || action.targetFrame == nil || action.navigationType == .linkActivated {
             decisionHandler(.cancel)
-            open(url)
+            open(destination)
             return
         }
+        singlePostID = BrowserPolicy.postID(for: url)
         decisionHandler(.allow)
     }
 
@@ -178,7 +169,7 @@ private final class BrowserMessageHandler: NSObject, WKScriptMessageHandler {
               host == "instagram.com" || host.hasSuffix(".instagram.com"),
               let event = message.body as? String, event == "blocked" else { return }
         DispatchQueue.main.async { [weak self] in
-            self?.owner?.notice = "Reels and Explore are turned off in DoomScroll."
+            self?.owner?.notice = "Open one Reel at a time. Return to Messages or Following to choose another."
         }
     }
 }
