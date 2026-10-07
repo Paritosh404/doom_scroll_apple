@@ -7,12 +7,18 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_ENTITLEMENTS: ""
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "2"
+    TARGETED_DEVICE_FAMILY: "1,2"
 targets:
   DoomScroll:
     type: application
     platform: iOS
     sources:
       - path: DoomScroll
+        excludes:
+          - Info.plist
     dependencies:
       - target: DoomScrollBroadcast
         embed: true
@@ -20,29 +26,27 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.paritosh404.doomscroll
         INFOPLIST_FILE: DoomScroll/Info.plist
-        TARGETED_DEVICE_FAMILY: "1,2"
-    info:
-      path: DoomScroll/Info.plist
-      properties:
-        CFBundleDisplayName: DoomScroll
-        UILaunchScreen: {}
-        UIApplicationSceneManifest:
-          UIApplicationSupportsMultipleScenes: false
+        GENERATE_INFOPLIST_FILE: NO
   DoomScrollBroadcast:
     type: app-extension
     platform: iOS
     sources:
       - path: DoomScrollBroadcast
+        excludes:
+          - Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.paritosh404.doomscroll.broadcast
         INFOPLIST_FILE: DoomScrollBroadcast/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
         SKIP_INSTALL: YES
         APPLICATION_EXTENSION_API_ONLY: YES
-    info:
-      path: DoomScrollBroadcast/Info.plist
-      properties:
-        CFBundleDisplayName: DoomScroll Broadcast
-        NSExtension:
-          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
-          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).SampleHandler"
+schemes:
+  DoomScroll:
+    build:
+      targets:
+        DoomScroll: all
+    run:
+      config: Debug
+    archive:
+      config: Release
