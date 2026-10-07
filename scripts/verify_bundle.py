@@ -9,6 +9,14 @@ def verify(app):
         info = plistlib.load(source)
     assert info["CFBundleIdentifier"] == "com.paritosh404.doomscroll"
     assert info["CFBundlePackageType"] == "APPL"
+    assert info["CFBundleDisplayName"] == "InstaCalm", "Incorrect app display name"
+    for key in ("CFBundleIcons", "CFBundleIcons~ipad"):
+        primary = info.get(key, {}).get("CFBundlePrimaryIcon", {})
+        assert primary.get("CFBundleIconName") == "AppIcon", f"Missing {key} primary icon"
+        assert primary.get("CFBundleIconFiles"), f"Missing {key} icon files"
+        for name in primary["CFBundleIconFiles"]:
+            assert list(app.glob(name + "*.png")), f"Missing compiled icon: {name}"
+    assert (app / "Assets.car").is_file(), "Missing compiled assets"
     executable = info["CFBundleExecutable"]
     assert Path(executable).name == executable
     binary = app / executable

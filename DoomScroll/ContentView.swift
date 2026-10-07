@@ -65,7 +65,7 @@ struct ContentView: View {
                         Text("No screen recording. No paid Apple Developer capabilities.")
                     }
                     Section("Your account") {
-                        Text("Login stays in this app's website storage. DoomScroll does not read or send your password or messages to a separate server.")
+                        Text("Login stays in this app's website storage. InstaCalm does not read or send your password or messages to a separate server.")
                         Text("Use your Instagram login. Facebook sign-in and links to other apps or websites are not supported.")
                         Button("Clear login and website data", role: .destructive) {
                             confirmReset = true
@@ -73,10 +73,10 @@ struct ContentView: View {
                     }
                     Section("Website support") {
                         Text("Instagram controls which Stories and web features are available. Calls and background message notifications are not provided. The player may need updates when Instagram changes.")
-                        Text("Filters apply only inside DoomScroll. Instagram website updates can require filter updates. This app is not affiliated with Instagram or Meta.")
+                        Text("Filters apply only inside InstaCalm. Instagram website updates can require filter updates. This app is not affiliated with Instagram or Meta.")
                     }
                 }
-                .navigationTitle("About DoomScroll")
+                .navigationTitle("About InstaCalm")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showInfo = false } } }
                 .confirmationDialog("Clear your Instagram login on this device?", isPresented: $confirmReset) {
                     Button("Clear login", role: .destructive) {
