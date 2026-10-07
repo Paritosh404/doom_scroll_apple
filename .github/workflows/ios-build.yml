@@ -26,15 +26,21 @@ jobs:
 
       - name: Validate source configuration
         run: |
-          plutil -lint DoomScroll/Info.plist DoomScrollBroadcast/Info.plist
-          if grep -R -E 'import (FamilyControls|ManagedSettings|DeviceActivity|NetworkExtension)' DoomScroll DoomScrollBroadcast; then
+          plutil -lint DoomScroll/Info.plist
+          if grep -R -E 'import (FamilyControls|ManagedSettings|DeviceActivity|NetworkExtension|ReplayKit)' DoomScroll; then
             echo "Paid-capability dependency found"
             exit 1
           fi
-          if find DoomScroll DoomScrollBroadcast -name '*.entitlements' | grep -q .; then
+          if find DoomScroll -name '*.entitlements' | grep -q .; then
             echo "Unexpected entitlements file in free-account prototype"
             exit 1
           fi
+
+      - name: Test navigation and dynamic page filtering
+        run: |
+          swiftc DoomScroll/BrowserPolicy.swift tests/main.swift -o /tmp/browser-policy-tests
+          /tmp/browser-policy-tests
+          node --test tests/filter.test.cjs
 
       - name: Build unsigned app
         run: |
@@ -52,7 +58,7 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" \
             build
 
-      - name: Verify embedded broadcast extension
+      - name: Verify browser bundle
         run: python3 scripts/verify_bundle.py build/DerivedData/Build/Products/Release-iphoneos/DoomScroll.app
 
       - name: Package unsigned IPA

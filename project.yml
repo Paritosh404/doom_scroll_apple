@@ -8,8 +8,8 @@ settings:
     SWIFT_VERSION: "5.0"
     CODE_SIGN_STYLE: Automatic
     CODE_SIGN_ENTITLEMENTS: ""
-    MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "2"
+    MARKETING_VERSION: "0.3.0"
+    CURRENT_PROJECT_VERSION: "3"
     TARGETED_DEVICE_FAMILY: "1,2"
 targets:
   DoomScroll:
@@ -19,28 +19,11 @@ targets:
       - path: DoomScroll
         excludes:
           - Info.plist
-    dependencies:
-      - target: DoomScrollBroadcast
-        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.paritosh404.doomscroll
         INFOPLIST_FILE: DoomScroll/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-  DoomScrollBroadcast:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: DoomScrollBroadcast
-        excludes:
-          - Info.plist
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.paritosh404.doomscroll.broadcast
-        INFOPLIST_FILE: DoomScrollBroadcast/Info.plist
-        GENERATE_INFOPLIST_FILE: NO
-        SKIP_INSTALL: YES
-        APPLICATION_EXTENSION_API_ONLY: YES
 schemes:
   DoomScroll:
     build:
