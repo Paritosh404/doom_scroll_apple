@@ -7,24 +7,6 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !browser.playerActive {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("DoomScroll").font(.headline)
-                        Label("instagram.com · Focus browser", systemImage: "lock.fill")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button { showInfo = true } label: {
-                        Image(systemName: "info.circle").font(.title3)
-                    }
-                    .accessibilityLabel("About this browser")
-                }
-                .padding(.horizontal).padding(.vertical, 10)
-                Divider()
-
-            }
-
             if !browser.playerActive, let notice = browser.notice {
                 HStack {
                     Text(notice).font(.caption)
@@ -54,24 +36,24 @@ struct ContentView: View {
                 if browser.loading { ProgressView().padding(8).background(.regularMaterial, in: Capsule()) }
             }
 
+
+        }
+        .overlay(alignment: .bottomTrailing) {
             if !browser.playerActive {
-                Divider()
-                HStack {
-                    Button { browser.open(BrowserPolicy.inbox) } label: {
-                        Label("Messages", systemImage: "bubble.left.and.bubble.right")
-                    }
-                    Spacer()
-                    Button { browser.open(BrowserPolicy.feed) } label: {
-                        Label("Home", systemImage: "house")
-                    }
-                    Spacer()
-                    Button { browser.back() } label: { Image(systemName: "chevron.left") }
-                        .disabled(!browser.canGoBack).accessibilityLabel("Go back")
-                    Button { browser.reload() } label: { Image(systemName: "arrow.clockwise") }
-                        .padding(.leading, 16).accessibilityLabel("Reload Instagram")
+                Menu {
+                    Button("Home", systemImage: "house") { browser.open(BrowserPolicy.feed) }
+                    Button("Messages", systemImage: "bubble.left.and.bubble.right") { browser.open(BrowserPolicy.inbox) }
+                    Button("Back", systemImage: "chevron.left") { browser.back() }
+                        .disabled(!browser.canGoBack)
+                    Button("Reload", systemImage: "arrow.clockwise") { browser.reload() }
+                    Button("About and settings", systemImage: "info.circle") { showInfo = true }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 44, height: 44)
+                        .background(.regularMaterial, in: Circle())
                 }
-                .font(.subheadline).padding()
-                .disabled(!browser.ready)
+                .accessibilityLabel("Browser menu")
+                .padding(8)
             }
         }
         .sheet(isPresented: $showInfo) {
@@ -79,7 +61,7 @@ struct ContentView: View {
                 List {
                     Section("Instagram, with less scrolling") {
                         Text("Instagram's normal homepage opens first, including its Stories row. Home and Messages scroll normally.")
-                        Text("Tap a video or a shared Reel to watch it in a separate player. Tap Play with sound for audio. There is no next-video feed in the player; close it to return.")
+                        Text("Tap a video or a shared Reel to watch it in a separate player. Sound is on by default; use the video's own controls to mute if needed. There is no next-video feed in the player; close it to return.")
                         Text("No screen recording. No paid Apple Developer capabilities.")
                     }
                     Section("Your account") {

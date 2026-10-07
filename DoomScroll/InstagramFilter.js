@@ -94,32 +94,13 @@
             '</style><dialog aria-label="Single video"><div class="layout">' +
             '<div class="bar"><button id="close">Close</button></div>' +
             '<div class="stage"></div><div class="status">Loading the selected video…</div>' +
-            '<div class="bar soundbar"><button id="sound">Play with sound</button></div></div></dialog>';
+            '</div></dialog>';
         const dialog = shadow.querySelector("dialog");
         player = { host, shadow, dialog, video: null, source: "", placeholder: null, failed: false };
         document.documentElement.appendChild(host);
         dialog.showModal();
         shadow.querySelector("#close").addEventListener("click", closePlayer);
         dialog.addEventListener("cancel", event => { event.preventDefault(); closePlayer(); });
-        shadow.querySelector("#sound").addEventListener("click", () => {
-            const active = player;
-            if (!active?.video || active.failed) return;
-            // A real tap permits audible playback in WebKit.
-            active.video.defaultMuted = false;
-            active.video.muted = false;
-            active.video.volume = 1;
-            active.video.play().then(() => {
-                if (player !== active) return;
-                active.shadow.querySelector(".status").hidden = true;
-                active.shadow.querySelector(".soundbar").hidden = true;
-            }).catch(() => {
-                if (player === active) {
-                    active.shadow.querySelector(".status").hidden = false;
-                    active.shadow.querySelector(".status").textContent = "Tap the video play control to start playback.";
-                }
-            });
-
-        });
         notify("player-open");
         pauseBackground();
     }
@@ -141,6 +122,9 @@
         video.playsInline = true;
         video.autoplay = false;
         video.loop = false;
+        video.defaultMuted = false;
+        video.muted = false;
+        video.volume = 1;
         active.shadow.querySelector(".stage").appendChild(video);
         active.shadow.querySelector(".status").hidden = true;
         const guardSource = () => {
@@ -168,6 +152,16 @@
             video.pause();
         }, true);
         pauseBackground();
+        video.play().catch(() => {
+            // WebKit can still require a tap; keep its built-in play control.
+            if (player === active && !active.failed) {
+                active.shadow.querySelector(".status").hidden = false;
+                active.shadow.querySelector(".status").textContent = "Tap play to start.";
+            }
+        });
+        video.addEventListener("playing", () => {
+            if (player === active && !active.failed) active.shadow.querySelector(".status").hidden = true;
+        });
     }
 
     // Find the tapped media, not an arbitrary first video elsewhere in the feed.
@@ -267,7 +261,16 @@
     window.addEventListener("keydown", event => {
         if (player && ["ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "Home", "End"].includes(event.key)) stop(event);
     }, true);
+    const soundInitialized = new WeakSet();
+    const defaultSound = media => {
+        if (soundInitialized.has(media)) return;
+        soundInitialized.add(media);
+        media.defaultMuted = false;
+        media.muted = false;
+        media.volume = 1;
+    };
     document.addEventListener("play", event => {
+        if (event.target.matches?.("video, audio")) defaultSound(event.target);
         if (!player && dmIntent && event.target.matches?.("video")) captureDMVideo(event.target);
         if (player && event.target.matches?.("video, audio")) {
             event.stopImmediatePropagation();

@@ -1,5 +1,11 @@
 # DoomScroll — Instagram focus browser
 
+Version 0.5.3 removes the persistent app header and bottom navigation. A compact
+ellipsis menu provides Home, Messages, Back, Reload, and settings. The player has
+one Close control and no separate sound toolbar. New playback defaults to sound
+on; the video's native controls can still mute. If WebKit requires a user gesture,
+tap its built-in play control. Earlier version notes below describe prior UI.
+
 Version 0.5.1 fixes the message-preview path: a tap on a large media thumbnail
 arms a short-lived selection intent. A video inserted or expanded by Instagram's
 message viewer is then moved into the existing single-video player, even when

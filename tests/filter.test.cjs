@@ -75,9 +75,9 @@ test("selected video is moved into an independent viewport-sized modal", async (
     fs.mkdirSync("build/test-results", {recursive:true});
     await page.screenshot({path:join("build/test-results", "single-player.png")});
 });
-test("Play with sound unmutes and starts real media playback", async () => {
+test("selected video starts with sound and no separate audio toolbar", async () => {
     await openVideo();
-    await page.getByRole("button", {name:"Play with sound"}).click();
+    assert.equal(await page.locator("#sound").count(), 0);
     await page.waitForFunction(() => {
         const v=document.querySelector("#doomscroll-player")?.shadowRoot.querySelector("video");
         return v && !v.paused && !v.muted && v.volume === 1 && v.currentTime > 0;
@@ -177,7 +177,8 @@ async function delayedDMViewer(storyRoute = false) {
 test("DM image preview with delayed same-URL viewer gets sound and scroll lock", async () => {
     await delayedDMViewer();
     assert.equal(page.url(),"https://www.instagram.com/direct/t/123/");
-    await page.getByRole("button",{name:"Play with sound"}).click();
+    assert.equal(await player().locator("video").evaluate(v => v.muted), false);
+    await player().locator("video").evaluate(v => v.play());
     await page.waitForFunction(()=>{
         const v=document.querySelector("#doomscroll-player").shadowRoot.querySelector("video");
         return !v.paused && !v.muted && v.currentTime > 0;
