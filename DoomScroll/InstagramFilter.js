@@ -11,6 +11,23 @@
     };
     const entryID = postID(location.href);
     const entryURL = location.href;
+    const dmKey = "doomscroll-dm-video-intent";
+    const readIntent = () => {
+        try {
+            const value = JSON.parse(sessionStorage.getItem(dmKey));
+            const origin = value && url(value.returnURL);
+            return origin && instagram(origin.hostname) && /^\/direct\//.test(origin.pathname) &&
+                Date.now() - value.at < 15000 ? value : null;
+        } catch { return null; }
+    };
+    let dmIntent = readIntent();
+    let dmBaseline = new Map();
+    const clearIntent = () => {
+        dmIntent = null;
+        dmBaseline.clear();
+        try { sessionStorage.removeItem(dmKey); } catch {}
+    };
+    const isDM = () => /^\/direct\//.test(location.pathname);
     const isStory = () => /^\/stories\//i.test(location.pathname);
     const isReelPage = () => /^\/(?:reel|reels|tv)\/[^/]+\/?$/i.test(location.pathname);
     const notify = event => {
@@ -46,7 +63,11 @@
         else old.video?.remove();
         old.dialog.close();
         old.host.remove();
-        notify(entryID ? "player-return" : "player-close");
+        if (old.dmReturnURL) {
+            notify("player-close");
+            // Keep native scroll unlocked before requesting return navigation.
+            setTimeout(() => location.assign(old.dmReturnURL), 0);
+        } else notify(entryID ? "player-return" : "player-close");
     }
     window.addEventListener("doomscroll-close-player", closePlayer);
 
@@ -98,10 +119,12 @@
     }
 
     function isolate(video) {
-        if (isStory() || dismissed || player?.video) return;
+        if ((isStory() && !dmIntent) || dismissed || player?.video) return;
         createPlayer();
         if (!player) return;
         const active = player;
+        active.dmReturnURL = dmIntent?.returnURL || null;
+        clearIntent();
         active.video = video;
         active.source = sourceOf(video);
         active.placeholder = document.createComment("Selected video");
@@ -151,15 +174,56 @@
         }
         return null;
     }
+    function armDMPreview(target) {
+        if (!isDM() || !(target instanceof Element)) return;
+        const link = target.closest("a[href]");
+        if (link && postID(link.href)) return;
+        // A large media thumbnail, not a text message, avatar, or composer button.
+        let preview = null;
+        for (let node = target, depth = 0; node && depth < 5; node = node.parentElement, depth++) {
+            if (node.matches("article, main, body, [role=main]")) break;
+            const media = node.matches("img, video") ? node : node.querySelector("img, video");
+            if (media) {
+                const box = media.getBoundingClientRect();
+                if (box.width >= 90 && box.height >= 90) { preview = media; break; }
+            }
+            if (node.matches("main, body, [role=main]")) break;
+        }
+        if (!preview) return;
+        dmBaseline = new Map(Array.from(document.querySelectorAll("video"), video => {
+            const box = video.getBoundingClientRect();
+            return [video, {source:sourceOf(video), area:box.width * box.height}];
+        }));
+        dmIntent = { at:Date.now(), returnURL:location.href };
+        try { sessionStorage.setItem(dmKey, JSON.stringify(dmIntent)); } catch {}
+        dismissed = false;
+    }
+    function captureDMVideo(preferred) {
+        if (!dmIntent || player?.video) return;
+        if (Date.now() - dmIntent.at >= 15000) { clearIntent(); return; }
+        const candidates = preferred ? [preferred] : Array.from(document.querySelectorAll("video"));
+        const candidate = candidates.find(video => {
+            const box = video.getBoundingClientRect();
+            const previous = dmBaseline.get(video);
+            const visible = box.width >= 120 && box.height >= 160 &&
+                box.bottom > 0 && box.top < innerHeight &&
+                getComputedStyle(video).visibility !== "hidden";
+            return visible && (!previous || previous.source !== sourceOf(video) ||
+                box.width * box.height > previous.area * 1.5);
+        });
+        if (candidate) isolate(candidate);
+    }
+
     window.addEventListener("click", event => {
         if (player) {
             if (!event.composedPath().includes(player.host)) stop(event);
             return;
         }
-        if (isStory()) return;
+        if (isStory() && !dmIntent) return;
         const anchor = event.target.closest?.("a[href]");
         if (anchor && blocked(anchor.href)) { stop(event); notify("blocked"); return; }
         if (anchor && postID(anchor.href)) { stop(event); location.assign(anchor.href); return; }
+        armDMPreview(event.target);
         const video = tappedVideo(event.target);
         if (video) {
             stop(event);
@@ -169,8 +233,12 @@
         }
     }, true);
 
+    window.addEventListener("pointerdown", event => {
+        if (!player && !isStory()) armDMPreview(event.target);
+    }, true);
     let touchedVideo = null;
     window.addEventListener("touchstart", event => {
+        if (!player && !isStory()) armDMPreview(event.target);
         touchedVideo = !player && !isStory() ? tappedVideo(event.target) : null;
     }, { capture: true, passive: true });
     window.addEventListener("touchend", () => { touchedVideo = null; }, true);
@@ -193,6 +261,7 @@
         if (player && ["ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "Home", "End"].includes(event.key)) stop(event);
     }, true);
     document.addEventListener("play", event => {
+        if (!player && dmIntent && event.target.matches?.("video")) captureDMVideo(event.target);
         if (player && event.target.matches?.("video, audio")) {
             event.stopImmediatePropagation();
             event.target.pause();
@@ -220,6 +289,7 @@
 
     function refresh() {
         scheduled = false;
+        captureDMVideo();
         if (isStory()) return;
         if (!player && !dismissed && isReelPage()) createPlayer();
         if (!dismissed && entryID && !player?.video) {
@@ -236,6 +306,6 @@
         scheduled = true;
         requestAnimationFrame(refresh);
     }
-    new MutationObserver(schedule).observe(document, { childList: true, subtree: true });
+    new MutationObserver(schedule).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["src", "class", "style"] });
     schedule();
 })();

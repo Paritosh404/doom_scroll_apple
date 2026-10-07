@@ -1,5 +1,16 @@
 # DoomScroll — Instagram focus browser
 
+Version 0.5.1 fixes the message-preview path: a tap on a large media thumbnail
+arms a short-lived selection intent. A video inserted or expanded by Instagram's
+message viewer is then moved into the existing single-video player, even when
+the URL stays unchanged or uses a Story-like route. The intent is retained across
+document navigation, expires after 15 seconds, and is cleared after capture.
+Close returns to the originating conversation. No message text is inspected.
+
+Four additional browser regressions cover delayed DM viewers, Story-like routes,
+early pointer-down navigation, and incoming videos without a user selection.
+Live Instagram/iPhone verification is still required for this patch.
+
 Version 0.5 restores the normal Instagram homepage as the startup page and Home
 button destination. No Following redirect or Stories-row filtering is applied.
 Messages, photos, profiles, Explore, and Stories retain Instagram's web layout.

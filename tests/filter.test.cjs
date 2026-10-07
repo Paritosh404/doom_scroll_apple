@@ -149,3 +149,80 @@ test("replacement media source stops instead of playing a suggested clip", async
     await page.waitForFunction(()=>document.querySelector("#doomscroll-player").shadowRoot.querySelector(".status").textContent.includes("changed the video"));
     assert.equal(await player().locator("video").evaluate(v=>v.paused),true);
 });
+
+
+async function delayedDMViewer(storyRoute = false) {
+    await page.goto("https://www.instagram.com/direct/t/123/");
+    await page.evaluate(storyRoute => {
+        const button=document.createElement("button");
+        button.id="dm-preview";
+        const img=document.createElement("img");
+        img.width=190; img.height=300;
+        img.src="data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="190" height="300"><rect width="190" height="300" fill="blue"/></svg>');
+        button.append(img);
+        button.onclick=()=>setTimeout(()=>{
+            if(storyRoute) history.pushState({}, "", "/stories/shared/123/");
+            const viewer=document.createElement("div");
+            viewer.setAttribute("role","dialog");
+            viewer.style.cssText="position:fixed;inset:0;overflow:auto;background:black;z-index:1000";
+            viewer.innerHTML='<video id="dm-selected" muted playsinline src="/tone.wav" style="width:300px;height:500px"></video>'+
+                '<div style="height:900px">Suggested</div><video id="dm-next" muted src="/tone.wav"></video>';
+            document.body.append(viewer);
+        },30);
+        document.body.prepend(button);
+    },storyRoute);
+    await page.locator("#dm-preview img").click();
+    await player().locator("#dm-selected").waitFor();
+}
+test("DM image preview with delayed same-URL viewer gets sound and scroll lock", async () => {
+    await delayedDMViewer();
+    assert.equal(page.url(),"https://www.instagram.com/direct/t/123/");
+    await page.getByRole("button",{name:"Play with sound"}).click();
+    await page.waitForFunction(()=>{
+        const v=document.querySelector("#doomscroll-player").shadowRoot.querySelector("video");
+        return !v.paused && !v.muted && v.currentTime > 0;
+    });
+    const stopped=await page.evaluate(()=>{
+        const e=new Event("touchmove",{cancelable:true,bubbles:true});
+        window.dispatchEvent(e);
+        history.pushState({},"","/reel/SUGGESTED/");
+        return e.defaultPrevented;
+    });
+    assert.equal(stopped,true);
+    assert.equal(page.url(),"https://www.instagram.com/direct/t/123/");
+    assert.equal(await player().locator("video").getAttribute("id"),"dm-selected");
+    assert.ok((await page.evaluate(()=>bridgeEvents)).includes("player-open"));
+});
+test("DM shared viewer using a Story-like route is captured and returns to the conversation", async () => {
+    await delayedDMViewer(true);
+    assert.equal(await player().locator("video").getAttribute("id"),"dm-selected");
+    await page.getByRole("button",{name:"Close",exact:true}).click();
+    await page.waitForURL("https://www.instagram.com/direct/t/123/");
+    assert.equal(await player().count(),0);
+});
+test("incoming DM video without a media-preview tap does not open the player", async () => {
+    await page.goto("https://www.instagram.com/direct/t/123/");
+    await page.evaluate(()=>{
+        const v=document.createElement("video");
+        v.style.cssText="position:fixed;top:0;width:300px;height:500px";
+        v.src="/tone.wav";document.body.append(v);
+    });
+    await page.waitForTimeout(100);
+    assert.equal(await player().count(),0);
+});
+
+test("DM preview navigation on pointer-down retains intent across document loads", async () => {
+    await page.goto("https://www.instagram.com/direct/t/123/");
+    await page.evaluate(()=>{
+        const image=document.createElement("img");
+        image.id="early-preview";
+        image.width=190;image.height=300;
+        image.src="data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="190" height="300"></svg>');
+        image.onpointerdown=()=>location.assign("/stories/shared/456/");
+        document.body.prepend(image);
+    });
+    await page.locator("#early-preview").dispatchEvent("pointerdown");
+    await page.waitForURL("**/stories/shared/456/");
+    await player().locator("video").waitFor();
+    assert.equal(await player().locator("video").getAttribute("id"),"selected");
+});
