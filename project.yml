@@ -6,22 +6,21 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    PRODUCT_BUNDLE_IDENTIFIER: com.paritosh404.doomscroll
     CODE_SIGN_STYLE: Automatic
-
 targets:
   DoomScroll:
     type: application
     platform: iOS
     sources:
       - path: DoomScroll
+    dependencies:
+      - target: DoomScrollBroadcast
+        embed: true
     settings:
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.paritosh404.doomscroll
         INFOPLIST_FILE: DoomScroll/Info.plist
-        CODE_SIGN_ENTITLEMENTS: DoomScroll/DoomScroll.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
-    entitlements:
-      path: DoomScroll/DoomScroll.entitlements
     info:
       path: DoomScroll/Info.plist
       properties:
@@ -29,3 +28,21 @@ targets:
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+  DoomScrollBroadcast:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: DoomScrollBroadcast
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.paritosh404.doomscroll.broadcast
+        INFOPLIST_FILE: DoomScrollBroadcast/Info.plist
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+    info:
+      path: DoomScrollBroadcast/Info.plist
+      properties:
+        CFBundleDisplayName: DoomScroll Broadcast
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).SampleHandler"
