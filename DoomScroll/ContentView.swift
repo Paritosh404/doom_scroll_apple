@@ -7,34 +7,25 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("DoomScroll").font(.headline)
-                    Label("instagram.com · Focus browser", systemImage: "lock.fill")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button { showInfo = true } label: {
-                    Image(systemName: "info.circle").font(.title3)
-                }
-                .accessibilityLabel("About this browser")
-            }
-            .padding(.horizontal).padding(.vertical, 10)
-            Divider()
-
-            if browser.playerActive {
+            if !browser.playerActive {
                 HStack {
-                    Label("Single video", systemImage: "hand.raised")
-                        .font(.caption)
-                    Spacer()
-                    Button("Done") {
-                        browser.closePlayer()
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("DoomScroll").font(.headline)
+                        Label("instagram.com · Focus browser", systemImage: "lock.fill")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
+                    Spacer()
+                    Button { showInfo = true } label: {
+                        Image(systemName: "info.circle").font(.title3)
+                    }
+                    .accessibilityLabel("About this browser")
                 }
-                .padding(10).background(Color.accentColor.opacity(0.1))
+                .padding(.horizontal).padding(.vertical, 10)
+                Divider()
+
             }
 
-            if let notice = browser.notice {
+            if !browser.playerActive, let notice = browser.notice {
                 HStack {
                     Text(notice).font(.caption)
                     Spacer()
@@ -63,23 +54,25 @@ struct ContentView: View {
                 if browser.loading { ProgressView().padding(8).background(.regularMaterial, in: Capsule()) }
             }
 
-            Divider()
-            HStack {
-                Button { browser.open(BrowserPolicy.inbox) } label: {
-                    Label("Messages", systemImage: "bubble.left.and.bubble.right")
+            if !browser.playerActive {
+                Divider()
+                HStack {
+                    Button { browser.open(BrowserPolicy.inbox) } label: {
+                        Label("Messages", systemImage: "bubble.left.and.bubble.right")
+                    }
+                    Spacer()
+                    Button { browser.open(BrowserPolicy.feed) } label: {
+                        Label("Home", systemImage: "house")
+                    }
+                    Spacer()
+                    Button { browser.back() } label: { Image(systemName: "chevron.left") }
+                        .disabled(!browser.canGoBack).accessibilityLabel("Go back")
+                    Button { browser.reload() } label: { Image(systemName: "arrow.clockwise") }
+                        .padding(.leading, 16).accessibilityLabel("Reload Instagram")
                 }
-                Spacer()
-                Button { browser.open(BrowserPolicy.feed) } label: {
-                    Label("Home", systemImage: "house")
-                }
-                Spacer()
-                Button { browser.back() } label: { Image(systemName: "chevron.left") }
-                    .disabled(!browser.canGoBack).accessibilityLabel("Go back")
-                Button { browser.reload() } label: { Image(systemName: "arrow.clockwise") }
-                    .padding(.leading, 16).accessibilityLabel("Reload Instagram")
+                .font(.subheadline).padding()
+                .disabled(!browser.ready)
             }
-            .font(.subheadline).padding()
-            .disabled(!browser.ready)
         }
         .sheet(isPresented: $showInfo) {
             NavigationStack {

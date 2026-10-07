@@ -83,8 +83,8 @@
             'background:#101114;color:white;font:16px system-ui;}' +
             'dialog::backdrop{background:#101114}' +
             '.layout{height:100%;display:flex;flex-direction:column;min-width:0}' +
-            '.bar{display:flex;gap:12px;align-items:center;padding:12px;flex:none}' +
-            '.bar span{flex:1}button{padding:10px 14px;border:0;border-radius:10px;' +
+            '.bar{display:flex;gap:8px;align-items:center;padding:4px 8px;flex:none;justify-content:flex-end}' +
+            '[hidden]{display:none!important}button{min-height:44px;min-width:44px;padding:8px 12px;border:0;border-radius:10px;' +
             'background:#e7eaff;color:#111;font:inherit}' +
             '.stage{flex:1;min-height:0;min-width:0;display:flex;align-items:center;justify-content:center;overflow:hidden}' +
             'video{display:block!important;position:static!important;transform:none!important;' +
@@ -92,9 +92,9 @@
             'margin:0!important;object-fit:contain!important;box-sizing:border-box!important}' +
             '.status{padding:8px 12px;flex:none;font-size:13px}' +
             '</style><dialog aria-label="Single video"><div class="layout">' +
-            '<div class="bar"><span>One video</span><button id="close">Close</button></div>' +
+            '<div class="bar"><button id="close">Close</button></div>' +
             '<div class="stage"></div><div class="status">Loading the selected video…</div>' +
-            '<div class="bar"><button id="sound">Play with sound</button></div></div></dialog>';
+            '<div class="bar soundbar"><button id="sound">Play with sound</button></div></div></dialog>';
         const dialog = shadow.querySelector("dialog");
         player = { host, shadow, dialog, video: null, source: "", placeholder: null, failed: false };
         document.documentElement.appendChild(host);
@@ -108,11 +108,17 @@
             active.video.defaultMuted = false;
             active.video.muted = false;
             active.video.volume = 1;
-            active.video.play().catch(() => {
-                if (player === active) active.shadow.querySelector(".status").textContent =
-                    "Tap the video play control to start playback.";
+            active.video.play().then(() => {
+                if (player !== active) return;
+                active.shadow.querySelector(".status").hidden = true;
+                active.shadow.querySelector(".soundbar").hidden = true;
+            }).catch(() => {
+                if (player === active) {
+                    active.shadow.querySelector(".status").hidden = false;
+                    active.shadow.querySelector(".status").textContent = "Tap the video play control to start playback.";
+                }
             });
-            active.shadow.querySelector(".status").textContent = "Sound on · close this video to choose another.";
+
         });
         notify("player-open");
         pauseBackground();
@@ -136,7 +142,7 @@
         video.autoplay = false;
         video.loop = false;
         active.shadow.querySelector(".stage").appendChild(video);
-        active.shadow.querySelector(".status").textContent = "Tap Play with sound. This player has no next-video feed.";
+        active.shadow.querySelector(".status").hidden = true;
         const guardSource = () => {
             if (player !== active) return;
             const source = sourceOf(video);
@@ -144,6 +150,7 @@
                 active.failed = true;
                 video.pause();
                 video.style.setProperty("visibility", "hidden", "important");
+                active.shadow.querySelector(".status").hidden = false;
                 active.shadow.querySelector(".status").textContent = "Instagram changed the video. Close it and reopen the selected Reel.";
             } else if (source) active.source = source;
         };
