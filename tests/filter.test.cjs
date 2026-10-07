@@ -94,7 +94,14 @@ test("wheel/touch and URL-less SPA navigation cannot advance to suggestions", as
     });
     assert.equal(result.blocked, true);
     assert.equal(result.path, "/");
-    await page.mouse.wheel(0, 1200);
+    const wheelBlocked = await page.evaluate(() => {
+        const event = new WheelEvent("wheel", {deltaY:1200,bubbles:true,cancelable:true});
+        window.dispatchEvent(event);
+        return event.defaultPrevented;
+    });
+    assert.equal(wheelBlocked, true);
+    // Mobile WebKit has no mouse wheel input in Playwright.
+    if (process.env.TEST_BROWSER === "chromium") await page.mouse.wheel(0, 1200);
     assert.equal(await player().locator("video").getAttribute("id"), "selected");
     assert.equal(await page.locator("#suggested").evaluate(v=>v.paused), true);
 });
