@@ -2,7 +2,7 @@ import Foundation
 
 enum BrowserPolicy {
     static let inbox = URL(string: "https://www.instagram.com/direct/inbox/")!
-    static let feed = URL(string: "https://www.instagram.com/?variant=following")!
+    static let feed = URL(string: "https://www.instagram.com/")!
 
     enum Decision: Equatable { case allow, reels, external }
 
@@ -11,17 +11,6 @@ enum BrowserPolicy {
         guard parts.count == 2, ["p", "reel", "reels", "tv"].contains(parts[0].lowercased()),
               parts[1].range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else { return nil }
         return parts[1]
-    }
-
-    static func followingURL(for url: URL) -> URL {
-        guard (url.path.isEmpty || url.path == "/"),
-              decision(for: url) == .allow,
-              var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
-        var query = parts.queryItems ?? []
-        query.removeAll { $0.name == "variant" }
-        query.append(URLQueryItem(name: "variant", value: "following"))
-        parts.queryItems = query
-        return parts.url ?? feed
     }
 
     static func decision(for url: URL, lockedPostID: String? = nil) -> Decision {
@@ -35,7 +24,7 @@ enum BrowserPolicy {
         }
         let path = (url.path.removingPercentEncoding ?? url.path).lowercased()
         let components = path.split(separator: "/").map(String.init)
-        if components.contains(where: { ["reel", "reels", "tv", "explore"].contains($0) }) {
+        if components.contains(where: { ["reel", "reels", "tv"].contains($0) }) {
             return .reels
         }
         return .allow

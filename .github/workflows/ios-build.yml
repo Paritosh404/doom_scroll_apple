@@ -40,6 +40,8 @@ jobs:
         run: |
           swiftc DoomScroll/BrowserPolicy.swift tests/main.swift -o /tmp/browser-policy-tests
           /tmp/browser-policy-tests
+          npm install --no-save --package-lock=false playwright@1.58.2
+          npx playwright install webkit
           node --test tests/filter.test.cjs
 
       - name: Build unsigned app

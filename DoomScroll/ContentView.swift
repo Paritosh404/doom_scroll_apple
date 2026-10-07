@@ -22,14 +22,13 @@ struct ContentView: View {
             .padding(.horizontal).padding(.vertical, 10)
             Divider()
 
-            if browser.singlePostID != nil {
+            if browser.playerActive {
                 HStack {
-                    Label("One post · scrolling off", systemImage: "hand.raised")
+                    Label("Single video", systemImage: "hand.raised")
                         .font(.caption)
                     Spacer()
                     Button("Done") {
-                        if browser.canGoBack { browser.back() }
-                        else { browser.open(BrowserPolicy.inbox) }
+                        browser.closePlayer()
                     }
                 }
                 .padding(10).background(Color.accentColor.opacity(0.1))
@@ -71,7 +70,7 @@ struct ContentView: View {
                 }
                 Spacer()
                 Button { browser.open(BrowserPolicy.feed) } label: {
-                    Label("Following", systemImage: "person.2")
+                    Label("Home", systemImage: "house")
                 }
                 Spacer()
                 Button { browser.back() } label: { Image(systemName: "chevron.left") }
@@ -86,8 +85,8 @@ struct ContentView: View {
             NavigationStack {
                 List {
                     Section("Instagram, with less scrolling") {
-                        Text("Messages open first. Following opens Instagram's feed for accounts you follow. Stories, photos, and videos can play.")
-                        Text("Open a shared Reel or a post from Following to watch it individually. Swiping, scrolling, and next-post navigation are disabled in the post viewer. Tap Done to return and choose another.")
+                        Text("Instagram's normal homepage opens first, including its Stories row. Home and Messages scroll normally.")
+                        Text("Tap a video or a shared Reel to watch it in a separate player. Tap Play with sound for audio. There is no next-video feed in the player; close it to return.")
                         Text("No screen recording. No paid Apple Developer capabilities.")
                     }
                     Section("Your account") {
@@ -98,7 +97,7 @@ struct ContentView: View {
                         }
                     }
                     Section("Website support") {
-                        Text("Instagram controls Following feed availability. If it does not load, choose Following from Instagram's own menu. DoomScroll does not verify your follower list. Calls and background message notifications are not provided.")
+                        Text("Instagram controls which Stories and web features are available. Calls and background message notifications are not provided. The player may need updates when Instagram changes.")
                         Text("Filters apply only inside DoomScroll. Instagram website updates can require filter updates. This app is not affiliated with Instagram or Meta.")
                     }
                 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import AVFAudio
 
 @MainActor
 final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
@@ -9,6 +10,7 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
     @Published var notice: String?
     @Published var ready = false
     @Published private(set) var singlePostID: String?
+    @Published private(set) var playerActive = false
 
     let webView: WKWebView
     private var observations: [NSKeyValueObservation] = []
@@ -23,6 +25,12 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
+        // Playback audio should not depend on the phone's silent switch.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        } catch {
+            notice = "Audio setup failed. Try closing and reopening DoomScroll."
+        }
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
@@ -48,13 +56,13 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
             return
         }
         webView.configuration.userContentController.addUserScript(
-            WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
-        // Media is allowed for Stories, messages, and Following posts.
+        // Media is allowed on the normal homepage, in Stories, and in messages.
         // The document script and navigation policy restrict single-post viewers.
         filtersInstalled = true
         ready = true
-        open(BrowserPolicy.inbox)
+        open(BrowserPolicy.feed)
     }
 
     func open(_ url: URL) {
@@ -65,14 +73,16 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
         }
         errorMessage = nil
         notice = nil
+        setPlayerActive(false)
         singlePostID = BrowserPolicy.postID(for: url)
-        webView.load(URLRequest(url: BrowserPolicy.followingURL(for: url)))
+        webView.load(URLRequest(url: url))
     }
 
     func reload() {
         guard filtersInstalled else { return }
         errorMessage = nil
-        if webView.url == nil { open(BrowserPolicy.inbox) }
+        setPlayerActive(false)
+        if webView.url == nil { open(BrowserPolicy.feed) }
         else { webView.reload() }
     }
 
@@ -80,12 +90,13 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
         guard webView.canGoBack else { return }
         errorMessage = nil
         singlePostID = nil
+        setPlayerActive(false)
         webView.goBack()
     }
 
     private func showBlocked(_ decision: BrowserPolicy.Decision) {
         notice = decision == .reels
-            ? "Open one Reel at a time. Return to Messages or Following to choose another."
+            ? "Open one Reel at a time. Return to Home or Messages to choose another."
             : "This link leaves Instagram. Use Instagram login here; app links and outside websites stay closed."
     }
 
@@ -100,16 +111,19 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
             decisionHandler(["https", "about"].contains(url.scheme ?? "") ? .allow : .cancel)
             return
         }
-        let decision = BrowserPolicy.decision(for: url, lockedPostID: singlePostID)
+        if playerActive {
+            decisionHandler(.cancel)
+            return
+        }
+        let decision = BrowserPolicy.decision(for: url)
         guard decision == .allow else {
             decisionHandler(.cancel)
             showBlocked(decision)
             return
         }
-        let destination = BrowserPolicy.followingURL(for: url)
-        if destination != url || action.targetFrame == nil || action.navigationType == .linkActivated {
+        if action.targetFrame == nil || action.navigationType == .linkActivated {
             decisionHandler(.cancel)
-            open(destination)
+            open(url)
             return
         }
         singlePostID = BrowserPolicy.postID(for: url)
@@ -144,6 +158,17 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
         decisionHandler(.deny)
     }
 
+    func setPlayerActive(_ active: Bool) {
+        playerActive = active
+        webView.scrollView.isScrollEnabled = !active
+        webView.allowsBackForwardNavigationGestures = !active
+    }
+
+    func closePlayer() {
+        webView.evaluateJavaScript("window.dispatchEvent(new Event('doomscroll-close-player'))")
+        setPlayerActive(false)
+    }
+
     func clearLogin() {
         webView.stopLoading()
         ready = false
@@ -153,7 +178,7 @@ final class InstagramBrowser: NSObject, ObservableObject, WKNavigationDelegate, 
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.ready = self.filtersInstalled
-                self.open(BrowserPolicy.inbox)
+                self.open(BrowserPolicy.feed)
             }
         }
     }
@@ -167,9 +192,18 @@ private final class BrowserMessageHandler: NSObject, WKScriptMessageHandler {
         let host = message.frameInfo.securityOrigin.host.lowercased()
         guard message.frameInfo.isMainFrame,
               host == "instagram.com" || host.hasSuffix(".instagram.com"),
-              let event = message.body as? String, event == "blocked" else { return }
+              let event = message.body as? String,
+              ["blocked", "player-open", "player-close", "player-return"].contains(event) else { return }
         DispatchQueue.main.async { [weak self] in
-            self?.owner?.notice = "Open one Reel at a time. Return to Messages or Following to choose another."
+            guard let owner = self?.owner else { return }
+            if event == "player-open" { owner.setPlayerActive(true) }
+            else if event == "player-close" { owner.setPlayerActive(false) }
+            else if event == "player-return" {
+                owner.setPlayerActive(false)
+                if owner.canGoBack { owner.back() }
+                else { owner.open(BrowserPolicy.feed) }
+            }
+            else { owner.notice = "Close this video to choose another from Home or Messages." }
         }
     }
 }

@@ -13,7 +13,7 @@ let cases: [(String, BrowserPolicy.Decision)] = [
     ("https://www.instagram.com/stories/highlights/123/", .allow),
     ("https://www.instagram.com/reels/", .reels),
     ("https://www.instagram.com/example/reels/", .reels),
-    ("https://www.instagram.com/explore/", .reels),
+    ("https://www.instagram.com/explore/", .allow),
     ("https://www.instagram.com/REELS/?source=dm", .reels),
     ("https://instagram.com.evil.example/direct/", .external),
     ("https://notinstagram.com/", .external),
@@ -32,9 +32,5 @@ for route in ["reel", "reels", "p", "tv"] {
     precondition(BrowserPolicy.decision(for: same, lockedPostID: "ABC_123") == .allow)
     precondition(BrowserPolicy.decision(for: next, lockedPostID: "ABC_123") == .reels)
 }
-let home = URL(string: "https://www.instagram.com/?variant=home&hl=en")!
-let following = BrowserPolicy.followingURL(for: home)
-precondition(URLComponents(url: following, resolvingAgainstBaseURL: false)!.queryItems!.contains(URLQueryItem(name: "variant", value: "following")))
-precondition(BrowserPolicy.followingURL(for: following) == following)
-precondition(BrowserPolicy.followingURL(for: BrowserPolicy.inbox) == BrowserPolicy.inbox)
-print("Passed navigation, single-post lock, Stories, and Following checks")
+precondition(BrowserPolicy.feed.absoluteString == "https://www.instagram.com/")
+print("Passed navigation, normal Home, Stories, and permalink checks")

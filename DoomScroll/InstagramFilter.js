@@ -1,191 +1,241 @@
-// Local navigation/media filtering. Does not read passwords or message text.
+// Instagram stays intact outside the single-video dialog. No account/message data is read.
 (() => {
     "use strict";
-    const isInstagram = host => host === "instagram.com" || host.endsWith(".instagram.com");
-    if (!isInstagram(location.hostname.toLowerCase())) return;
-    const parse = value => { try { return new URL(value, location.href); } catch { return null; } };
+    const instagram = host => host === "instagram.com" || host.endsWith(".instagram.com");
+    if (!instagram(location.hostname.toLowerCase()) || window.top !== window) return;
+    const url = value => { try { return new URL(value, location.href); } catch { return null; } };
     const postID = value => {
-        const url = parse(value);
-        if (!url || !isInstagram(url.hostname)) return null;
-        const match = url.pathname.match(/^\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)\/?$/i);
-        return match ? match[1] : null;
+        const u = url(value);
+        if (!u || !instagram(u.hostname)) return null;
+        return u.pathname.match(/^\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)\/?$/i)?.[1] || null;
     };
-    const singleID = postID(location.href);
-    const singleURL = location.href;
-    const notify = () => {
-        try { window.webkit.messageHandlers.focusBrowser.postMessage("blocked"); } catch {}
+    const entryID = postID(location.href);
+    const entryURL = location.href;
+    const isStory = () => /^\/stories\//i.test(location.pathname);
+    const isReelPage = () => /^\/(?:reel|reels|tv)\/[^/]+\/?$/i.test(location.pathname);
+    const notify = event => {
+        try { window.webkit.messageHandlers.focusBrowser.postMessage(event); } catch {}
     };
-    const forbidden = value => {
-        const url = parse(value);
-        if (!url || !isInstagram(url.hostname)) return false;
-        const id = postID(url.href);
-        if (id) return singleID !== null && id !== singleID;
-        let path = url.pathname;
-        try { path = decodeURIComponent(path); } catch {}
-        return path.toLowerCase().split("/").some(part =>
-            ["reel", "reels", "tv", "explore"].includes(part));
+    const blocked = value => {
+        const u = url(value);
+        if (!u || !instagram(u.hostname)) return false;
+        const id = postID(u.href);
+        if (id) return false;
+        return u.pathname.split("/").some(p => ["reel", "reels", "tv"].includes(p.toLowerCase()));
     };
-    const following = value => {
-        const url = parse(value);
-        if (url && isInstagram(url.hostname) && url.pathname === "/") {
-            url.searchParams.set("variant", "following");
-            return url.href;
-        }
-        return value;
+    let player = null;
+    let scheduled = false;
+    let dismissed = false;
+    const stop = event => { event.preventDefault(); event.stopImmediatePropagation(); };
+    const sourceOf = video => {
+        const source = video.currentSrc || video.getAttribute("src") ||
+            video.querySelector("source[src]")?.getAttribute("src") || "";
+        return source ? (url(source)?.href || source) : "";
     };
-    const go = value => location.assign(following(value));
-    const guardLocation = () => {
-        if (forbidden(location.href)) {
-            notify();
-            location.replace(singleID ? singleURL : "https://www.instagram.com/direct/inbox/");
-            return;
-        }
-        if (singleID && postID(location.href) === null) {
-            location.replace(following(location.href));
-            return;
-        }
-        const target = following(location.href);
-        if (target !== location.href) location.replace(target);
+    const pauseBackground = () => {
+        if (player) document.querySelectorAll("video, audio").forEach(media => media.pause());
     };
 
-    // Every individual post opens as a document, so its first post ID is fixed.
-    // Instagram cannot turn that viewer into a second Reel with SPA navigation.
-    for (const method of ["pushState", "replaceState"]) {
-        const original = history[method];
-        history[method] = function(state, title, url) {
-            if (url != null) {
-                if (forbidden(url)) { notify(); return; }
-                const target = parse(url);
-                if (target && (postID(target.href) !== singleID ||
-                    following(target.href) !== target.href)) {
-                    go(target.href);
-                    return;
-                }
-            }
-            const result = original.apply(this, arguments);
-            guardLocation();
-            return result;
+    function closePlayer() {
+        if (!player) return;
+        const old = player;
+        player = null;
+        dismissed = true;
+        old.video?.pause();
+        if (old.placeholder?.isConnected) old.placeholder.replaceWith(old.video);
+        else old.video?.remove();
+        old.dialog.close();
+        old.host.remove();
+        notify(entryID ? "player-return" : "player-close");
+    }
+    window.addEventListener("doomscroll-close-player", closePlayer);
+
+    function createPlayer() {
+        if (player || !document.documentElement) return;
+        const host = document.createElement("div");
+        host.id = "doomscroll-player";
+        const shadow = host.attachShadow({ mode: "open" });
+        shadow.innerHTML = '<style>' +
+            ':host{position:fixed;inset:0;z-index:2147483647}' +
+            'dialog{position:fixed;inset:0;margin:0;border:0;padding:0;box-sizing:border-box;' +
+            'width:100%;max-width:100%;height:100%;max-height:100%;overflow:hidden;' +
+            'background:#101114;color:white;font:16px system-ui;}' +
+            'dialog::backdrop{background:#101114}' +
+            '.layout{height:100%;display:flex;flex-direction:column;min-width:0}' +
+            '.bar{display:flex;gap:12px;align-items:center;padding:12px;flex:none}' +
+            '.bar span{flex:1}button{padding:10px 14px;border:0;border-radius:10px;' +
+            'background:#e7eaff;color:#111;font:inherit}' +
+            '.stage{flex:1;min-height:0;min-width:0;display:flex;align-items:center;justify-content:center;overflow:hidden}' +
+            'video{display:block!important;position:static!important;transform:none!important;' +
+            'width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;' +
+            'margin:0!important;object-fit:contain!important;box-sizing:border-box!important}' +
+            '.status{padding:8px 12px;flex:none;font-size:13px}' +
+            '</style><dialog aria-label="Single video"><div class="layout">' +
+            '<div class="bar"><span>One video</span><button id="close">Close</button></div>' +
+            '<div class="stage"></div><div class="status">Loading the selected video…</div>' +
+            '<div class="bar"><button id="sound">Play with sound</button></div></div></dialog>';
+        const dialog = shadow.querySelector("dialog");
+        player = { host, shadow, dialog, video: null, source: "", placeholder: null, failed: false };
+        document.documentElement.appendChild(host);
+        dialog.showModal();
+        shadow.querySelector("#close").addEventListener("click", closePlayer);
+        dialog.addEventListener("cancel", event => { event.preventDefault(); closePlayer(); });
+        shadow.querySelector("#sound").addEventListener("click", () => {
+            const active = player;
+            if (!active?.video || active.failed) return;
+            // A real tap permits audible playback in WebKit.
+            active.video.defaultMuted = false;
+            active.video.muted = false;
+            active.video.volume = 1;
+            active.video.play().catch(() => {
+                if (player === active) active.shadow.querySelector(".status").textContent =
+                    "Tap the video play control to start playback.";
+            });
+            active.shadow.querySelector(".status").textContent = "Sound on · close this video to choose another.";
+        });
+        notify("player-open");
+        pauseBackground();
+    }
+
+    function isolate(video) {
+        if (isStory() || dismissed || player?.video) return;
+        createPlayer();
+        if (!player) return;
+        const active = player;
+        active.video = video;
+        active.source = sourceOf(video);
+        active.placeholder = document.createComment("Selected video");
+        video.before(active.placeholder);
+        video.pause();
+        video.removeAttribute("style");
+        video.controls = true;
+        video.playsInline = true;
+        video.autoplay = false;
+        video.loop = false;
+        active.shadow.querySelector(".stage").appendChild(video);
+        active.shadow.querySelector(".status").textContent = "Tap Play with sound. This player has no next-video feed.";
+        const guardSource = () => {
+            if (player !== active) return;
+            const source = sourceOf(video);
+            if (source && active.source && source !== active.source) {
+                active.failed = true;
+                video.pause();
+                video.style.setProperty("visibility", "hidden", "important");
+                active.shadow.querySelector(".status").textContent = "Instagram changed the video. Close it and reopen the selected Reel.";
+            } else if (source) active.source = source;
         };
+        new MutationObserver(guardSource).observe(video, { attributes: true, childList: true, subtree: true, attributeFilter: ["src"] });
+        for (const type of ["play", "loadedmetadata", "loadeddata", "durationchange"]) {
+            video.addEventListener(type, event => {
+                if (player !== active) return;
+                event.stopImmediatePropagation();
+                guardSource();
+            }, true);
+        }
+        video.addEventListener("ended", event => {
+            if (player !== active) return;
+            event.stopImmediatePropagation();
+            video.pause();
+        }, true);
+        pauseBackground();
     }
-    for (const event of ["popstate", "hashchange", "pageshow"]) {
-        window.addEventListener(event, guardLocation);
+
+    // Find the tapped media, not an arbitrary first video elsewhere in the feed.
+    function tappedVideo(target) {
+        if (!(target instanceof Element)) return null;
+        for (let node = target, depth = 0; node && depth < 6; node = node.parentElement, depth++) {
+            if (node.matches("video")) return node;
+            const videos = node.querySelectorAll("video");
+            if (videos.length === 1) return videos[0];
+            if (videos.length > 1 || node.matches("article, main, body")) break;
+        }
+        return null;
     }
-    document.addEventListener("click", event => {
+    window.addEventListener("click", event => {
+        if (player) {
+            if (!event.composedPath().includes(player.host)) stop(event);
+            return;
+        }
+        if (isStory()) return;
         const anchor = event.target.closest?.("a[href]");
-        if (anchor) {
-            if (forbidden(anchor.href)) {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                notify();
-                return;
-            }
-            if (postID(anchor.href) || (singleID && isInstagram(parse(anchor.href)?.hostname || "")) ||
-                following(anchor.href) !== anchor.href) {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                go(anchor.href);
-                return;
-            }
-        }
-        if (singleID) {
-            const button = event.target.closest?.("button, [role=button]");
-            const label = button?.getAttribute("aria-label") || button?.getAttribute("title") || "";
-            if (/^(next|previous)(\s+(reel|post|video))?$/i.test(label.trim())) {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                notify();
-            }
+        if (anchor && blocked(anchor.href)) { stop(event); notify("blocked"); return; }
+        if (anchor && postID(anchor.href)) { stop(event); location.assign(anchor.href); return; }
+        const video = tappedVideo(event.target);
+        if (video) {
+            stop(event);
+            dismissed = false;
+            isolate(video);
+            return;
         }
     }, true);
 
-    const style = document.createElement("style");
-    style.textContent = [
-        "[data-doomscroll-hidden] { display: none !important; }",
-        "html[data-doomscroll-single], html[data-doomscroll-single] body { overflow: hidden !important; overscroll-behavior: none !important; }",
-        "html[data-doomscroll-single] video:not([data-doomscroll-selected]), html[data-doomscroll-single] audio { display: none !important; }"
-    ].join("\n");
+    let touchedVideo = null;
+    window.addEventListener("touchstart", event => {
+        touchedVideo = !player && !isStory() ? tappedVideo(event.target) : null;
+    }, { capture: true, passive: true });
+    window.addEventListener("touchend", () => { touchedVideo = null; }, true);
+    window.addEventListener("touchcancel", () => { touchedVideo = null; }, true);
 
-    let selectedVideo = null;
-    let selectedSource = "";
-    let selectedUnavailable = false;
-    const sourceOf = media => {
-        const source = media.currentSrc || media.getAttribute("src") ||
-            media.querySelector?.("source[src]")?.getAttribute("src") || "";
-        return source ? (parse(source)?.href || source) : "";
-    };
-    const restrictMedia = media => {
-        if (!singleID) return; // Stories, DMs, and Following retain normal playback.
-        if (!selectedVideo && media.tagName === "VIDEO") selectedVideo = media;
-        if (media !== selectedVideo || selectedUnavailable) {
-            media.pause();
-            media.removeAttribute("data-doomscroll-selected");
-            return;
-        }
-        const source = sourceOf(media);
-        if (source && selectedSource && source !== selectedSource) {
-            // A recycled player must not start the next Reel without changing URL.
-            selectedUnavailable = true;
-            media.pause();
-            media.removeAttribute("data-doomscroll-selected");
-            notify();
-            return;
-        }
-        if (source) selectedSource = source;
-        media.setAttribute("data-doomscroll-selected", "");
-        media.loop = false;
-        media.controls = true;
-        media.playsInline = true;
-    };
+    // A swipe begun on a video opens the one-video player rather than a Reel feed.
+    // Swipes elsewhere on Home/DMs and all Story gestures remain unchanged.
+    for (const name of ["touchmove", "wheel"]) {
+        window.addEventListener(name, event => {
+            if (!player && touchedVideo && name === "touchmove") {
+                dismissed = false;
+                isolate(touchedVideo);
+                touchedVideo = null;
+            }
+            if (player) stop(event);
+        },
+            { capture: true, passive: false });
+    }
+    window.addEventListener("keydown", event => {
+        if (player && ["ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "Home", "End"].includes(event.key)) stop(event);
+    }, true);
     document.addEventListener("play", event => {
-        if (event.target.matches?.("video, audio")) restrictMedia(event.target);
-    }, true);
-    document.addEventListener("ended", event => {
-        if (singleID && event.target.matches?.("video, audio")) {
+        if (player && event.target.matches?.("video, audio")) {
             event.stopImmediatePropagation();
             event.target.pause();
         }
     }, true);
 
-    if (singleID) {
-        const stopScroll = event => {
-            event.preventDefault();
-            event.stopImmediatePropagation();
+    for (const method of ["pushState", "replaceState"]) {
+        const original = history[method];
+        history[method] = function(state, title, value) {
+            if (player || (value != null && blocked(value))) { notify("blocked"); return; }
+            if (value != null && postID(value) !== postID(location.href)) {
+                location.assign(url(value).href);
+                return;
+            }
+            const result = original.apply(this, arguments);
+            schedule();
+            return result;
         };
-        document.addEventListener("touchmove", stopScroll, { capture: true, passive: false });
-        document.addEventListener("wheel", stopScroll, { capture: true, passive: false });
-        document.addEventListener("keydown", event => {
-            if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "End", "Home"].includes(event.key)) {
-                stopScroll(event);
-            }
-        }, true);
-        document.addEventListener("scroll", event => {
-            const target = event.target === document ? document.scrollingElement : event.target;
-            if (target?.scrollTop) target.scrollTop = 0;
-        }, true);
     }
+    window.addEventListener("popstate", () => {
+        if (player || blocked(location.href)) {
+            location.replace(entryURL);
+        } else schedule();
+    });
 
-    let scheduled = false;
-    const filter = () => {
+    function refresh() {
         scheduled = false;
-        if (!style.isConnected) (document.head || document.documentElement)?.appendChild(style);
-        if (singleID) document.documentElement?.setAttribute("data-doomscroll-single", "");
-        document.querySelectorAll("a[href]").forEach(anchor => {
-            if (forbidden(anchor.href)) {
-                if (!anchor.hasAttribute("data-doomscroll-hidden")) anchor.setAttribute("data-doomscroll-hidden", "");
-            } else if (anchor.hasAttribute("data-doomscroll-hidden")) {
-                anchor.removeAttribute("data-doomscroll-hidden");
-            }
-        });
-        if (selectedVideo && !selectedVideo.isConnected) selectedUnavailable = true;
-        document.querySelectorAll("video, audio").forEach(restrictMedia);
-        guardLocation();
-    };
-    new MutationObserver(() => {
+        if (isStory()) return;
+        if (!player && !dismissed && isReelPage()) createPlayer();
+        if (!dismissed && entryID && !player?.video) {
+            // A permalink's primary article is preferable to suggested videos.
+            const article = document.querySelector("article");
+            const candidate = article?.querySelector("video") ||
+                (isReelPage() ? document.querySelector("video") : null);
+            if (candidate) isolate(candidate);
+        }
+        pauseBackground();
+    }
+    function schedule() {
         if (scheduled) return;
         scheduled = true;
-        requestAnimationFrame(filter);
-    }).observe(document, {
-        childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src"]
-    });
-    filter();
+        requestAnimationFrame(refresh);
+    }
+    new MutationObserver(schedule).observe(document, { childList: true, subtree: true });
+    schedule();
 })();
