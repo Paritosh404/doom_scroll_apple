@@ -1,0 +1,16 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+
+# XcodeGen output can be regenerated from project.yml
+DoomScroll.xcodeproj/
+
+# macOS
+.DS_Store
+
+# Signing material - never commit
+*.p12
+*.mobileprovision
+*.cer
