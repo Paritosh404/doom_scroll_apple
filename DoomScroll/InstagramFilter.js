@@ -28,6 +28,7 @@
         try { sessionStorage.removeItem(dmKey); } catch {}
     };
     const isHome = () => location.pathname === "/";
+    if (isHome()) clearIntent();
     const isDM = () => /^\/direct\//.test(location.pathname);
     const isStory = () => /^\/stories\//i.test(location.pathname);
     const isReelPage = () => /^\/(?:reel|reels|tv)\/[^/]+\/?$/i.test(location.pathname);
@@ -67,13 +68,15 @@
         if (old.dmReturnURL) {
             notify("player-close");
             // Keep native scroll unlocked before requesting return navigation.
-            setTimeout(() => location.assign(old.dmReturnURL), 0);
+            if (location.href !== old.dmReturnURL) {
+                setTimeout(() => location.assign(old.dmReturnURL), 0);
+            }
         } else notify(entryID ? "player-return" : "player-close");
     }
     window.addEventListener("doomscroll-close-player", closePlayer);
 
     function createPlayer() {
-        if (isHome() || player || !document.documentElement) return;
+        if (isHome() || !dmIntent || player || !document.documentElement) return;
         const host = document.createElement("div");
         host.id = "doomscroll-player";
         const shadow = host.attachShadow({ mode: "open" });
@@ -107,7 +110,7 @@
     }
 
     function isolate(video) {
-        if (isHome() || (isStory() && !dmIntent) || dismissed || player?.video) return;
+        if (isHome() || (!dmIntent && !player) || dismissed || player?.video) return;
         createPlayer();
         if (!player) return;
         const active = player;
@@ -179,7 +182,12 @@
     function armDMPreview(target) {
         if (!isDM() || !(target instanceof Element)) return;
         const link = target.closest("a[href]");
-        if (link && postID(link.href)) return;
+        if (link && postID(link.href)) {
+            dmIntent = { at:Date.now(), returnURL:location.href };
+            try { sessionStorage.setItem(dmKey, JSON.stringify(dmIntent)); } catch {}
+            dismissed = false;
+            return;
+        }
         // A large media thumbnail, not a text message, avatar, or composer button.
         let preview = null;
         for (let node = target, depth = 0; node && depth < 5; node = node.parentElement, depth++) {
@@ -226,11 +234,11 @@
         const anchor = event.target.closest?.("a[href]");
         if (anchor && blocked(anchor.href)) { stop(event); notify("blocked"); return; }
         // Home media taps and carousel controls belong to Instagram's feed.
-        if (isHome()) return;
-        if (anchor && postID(anchor.href)) { stop(event); location.assign(anchor.href); return; }
+        if (!isDM()) return;
         armDMPreview(event.target);
+        if (anchor && postID(anchor.href)) { stop(event); location.assign(anchor.href); return; }
         const video = tappedVideo(event.target);
-        if (video) {
+        if (video && dmIntent) {
             stop(event);
             dismissed = false;
             isolate(video);
@@ -276,7 +284,7 @@
         const original = history[method];
         history[method] = function(state, title, value) {
             if (player || (value != null && blocked(value))) { notify("blocked"); return; }
-            if (value != null && postID(value) !== postID(location.href)) {
+            if (dmIntent && value != null && postID(value) !== postID(location.href)) {
                 location.assign(url(value).href);
                 return;
             }
@@ -295,8 +303,8 @@
         scheduled = false;
         captureDMVideo();
         if (isStory()) return;
-        if (!player && !dismissed && isReelPage()) createPlayer();
-        if (!dismissed && entryID && !player?.video) {
+        if (dmIntent && !player && !dismissed && isReelPage()) createPlayer();
+        if (dmIntent && !dismissed && entryID && !player?.video) {
             // A permalink's primary article is preferable to suggested videos.
             const article = document.querySelector("article");
             const candidate = article?.querySelector("video") ||

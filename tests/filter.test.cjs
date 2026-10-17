@@ -44,6 +44,33 @@ beforeEach(async () => {
 });
 afterEach(async () => { await context?.close(); });
 const player = () => page.locator("#doomscroll-player");
+test("Home SPA post navigation and nearby taps never create our player", async () => {
+    await openHome();
+    const marker = await page.evaluate(() => {
+        window.homeDocument = "preserved";
+        history.pushState({}, "", "/reel/HOMEVIDEO/");
+        return window.homeDocument;
+    });
+    assert.equal(marker, "preserved");
+    await page.locator("#video-wrapper").dispatchEvent("click");
+    await page.locator("#selected").click({position:{x:100,y:100}});
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await page.evaluate(() => window.homeDocument), "preserved");
+    assert.equal(await player().count(), 0);
+    assert.equal(await page.locator("article #selected").count(), 1);
+    assert.equal((await page.evaluate(() => bridgeEvents)).includes("player-open"), false);
+});
+test("Home permalink navigation and reload never create our player", async () => {
+    await openHome();
+    await page.locator("#shared").click();
+    await page.waitForURL("**/reel/SELECTED/");
+    await page.reload();
+    await page.locator("#video-wrapper").dispatchEvent("click");
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await player().count(), 0);
+    assert.equal(await page.locator("article #selected").count(), 1);
+    assert.equal((await page.evaluate(() => bridgeEvents)).includes("player-open"), false);
+});
 test("Home taps preserve inline playback and carousel controls", async () => {
     await openHome();
     await page.evaluate(() => {
@@ -94,7 +121,7 @@ test("Home clears stale message preview intent", async () => {
 });
 async function openHome() { await page.goto("https://www.instagram.com/"); }
 async function openVideo() {
-    await page.goto("https://www.instagram.com/example/");
+    await page.goto("https://www.instagram.com/direct/t/123/");
     await page.locator("#selected").click({position:{x:100,y:100}});
     await player().waitFor();
 }
@@ -141,7 +168,7 @@ test("wheel/touch and URL-less SPA navigation cannot advance to suggestions", as
         return {blocked:move.defaultPrevented,path:location.pathname};
     });
     assert.equal(result.blocked, true);
-    assert.equal(result.path, "/example/");
+    assert.equal(result.path, "/direct/t/123/");
     const wheelBlocked = await page.evaluate(() => {
         const event = new WheelEvent("wheel", {deltaY:1200,bubbles:true,cancelable:true});
         window.dispatchEvent(event);
@@ -173,12 +200,12 @@ test("Home video swipes stay inline; Story swipes stay free", async () => {
     assert.equal(storyBlocked, false);
     assert.equal(await player().count(), 0);
 });
-test("closing profile player restores the same document and video", async () => {
+test("closing message player restores the conversation", async () => {
     await openVideo();
     await page.getByRole("button", {name:"Close",exact:true}).click();
     assert.equal(await player().count(), 0);
     assert.equal(await page.locator("article #selected").count(), 1);
-    assert.equal(page.url(), "https://www.instagram.com/example/");
+    assert.equal(page.url(), "https://www.instagram.com/direct/t/123/");
     assert.equal(await page.locator("#stories").isVisible(), true);
     assert.ok((await page.evaluate(()=>bridgeEvents)).includes("player-close"));
 });
@@ -189,7 +216,8 @@ test("shared Reel permalink isolates only its selected video", async () => {
     await player().locator("video").waitFor();
     assert.equal(await player().locator("video").getAttribute("id"), "selected");
     await page.getByRole("button", {name:"Close",exact:true}).click();
-    assert.ok((await page.evaluate(()=>bridgeEvents)).includes("player-return"));
+    await page.waitForURL("https://www.instagram.com/direct/t/123/");
+    assert.equal(await player().count(), 0);
 });
 test("replacement media source stops instead of playing a suggested clip", async () => {
     await openVideo();

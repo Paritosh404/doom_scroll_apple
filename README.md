@@ -31,7 +31,9 @@ behind the modal instead of sharing the playback surface.
 
 - Home-feed videos play inline; video taps and carousel controls stay in the feed.
 - Swipes do not open the player, including horizontal swipes on video carousels.
-- Tapping a video outside Home (including messages) opens that particular video.
+- Only selecting a video or shared post in Messages opens the single-video player.
+  Home, profiles, and post links opened without a message selection use Instagram's
+  normal playback, even after a URL change or reload.
   Scrolling is locked only while the single-video player is open.
 - Shared Reel permalinks load the selected post, then isolate its primary video.
 - The player fits the WebView width/height with object-fit: contain, including
