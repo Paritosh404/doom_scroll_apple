@@ -62,11 +62,19 @@ test("Home taps preserve inline playback and carousel controls", async () => {
     await page.locator("#carousel-next").dispatchEvent("click");
     assert.equal(await page.locator("body").getAttribute("data-slide"), "2");
     const gestures = await page.locator("#selected").evaluate(v => {
+        // WebKit does not expose constructible Touch/TouchEvent objects.
+        // These synthetic events exercise our capture listeners, not native swiping.
+        const touchEvent = (type, x) => {
+            const event = new Event(type, {bubbles:true,cancelable:true});
+            const touches = type === "touchend" ? [] : [{identifier:1,target:v,clientX:x,clientY:150}];
+            Object.defineProperty(event, "touches", {value:touches});
+            return event;
+        };
         return [100, -100].map(delta => {
-            v.dispatchEvent(new TouchEvent("touchstart", {bubbles:true, touches:[new Touch({identifier:1,target:v,clientX:150,clientY:150})]}));
-            const move = new TouchEvent("touchmove", {bubbles:true,cancelable:true,touches:[new Touch({identifier:1,target:v,clientX:150+delta,clientY:150})]});
+            v.dispatchEvent(touchEvent("touchstart", 150));
+            const move = touchEvent("touchmove", 150 + delta);
             v.dispatchEvent(move);
-            v.dispatchEvent(new TouchEvent("touchend", {bubbles:true}));
+            v.dispatchEvent(touchEvent("touchend", 150 + delta));
             return move.defaultPrevented;
         });
     });
