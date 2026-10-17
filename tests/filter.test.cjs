@@ -44,9 +44,49 @@ beforeEach(async () => {
 });
 afterEach(async () => { await context?.close(); });
 const player = () => page.locator("#doomscroll-player");
+test("Home taps preserve inline playback and carousel controls", async () => {
+    await openHome();
+    await page.evaluate(() => {
+        const button = document.createElement("button");
+        button.id = "carousel-next";
+        button.textContent = "Next slide";
+        button.onclick = () => document.body.dataset.slide = "2";
+        document.querySelector("#video-wrapper").append(button);
+        document.querySelector("#selected").onclick = e => e.currentTarget.play();
+    });
+    await page.locator("#selected").click({position:{x:100,y:100}});
+    await page.waitForFunction(() => {
+        const v = document.querySelector("#selected");
+        return !v.paused && !v.muted && v.currentTime > 0;
+    });
+    await page.locator("#carousel-next").dispatchEvent("click");
+    assert.equal(await page.locator("body").getAttribute("data-slide"), "2");
+    const gestures = await page.locator("#selected").evaluate(v => {
+        return [100, -100].map(delta => {
+            v.dispatchEvent(new TouchEvent("touchstart", {bubbles:true, touches:[new Touch({identifier:1,target:v,clientX:150,clientY:150})]}));
+            const move = new TouchEvent("touchmove", {bubbles:true,cancelable:true,touches:[new Touch({identifier:1,target:v,clientX:150+delta,clientY:150})]});
+            v.dispatchEvent(move);
+            v.dispatchEvent(new TouchEvent("touchend", {bubbles:true}));
+            return move.defaultPrevented;
+        });
+    });
+    assert.deepEqual(gestures, [false, false]);
+    assert.equal(await player().count(), 0);
+    assert.equal(await page.locator("article #selected").count(), 1);
+    assert.equal((await page.evaluate(() => bridgeEvents)).includes("player-open"), false);
+});
+test("Home clears stale message preview intent", async () => {
+    await openHome();
+    await page.evaluate(() => sessionStorage.setItem("doomscroll-dm-video-intent", JSON.stringify({
+        at: Date.now(), returnURL: "https://www.instagram.com/direct/t/123/"
+    })));
+    await page.reload();
+    await page.waitForFunction(() => sessionStorage.getItem("doomscroll-dm-video-intent") === null);
+    assert.equal(await player().count(), 0);
+});
 async function openHome() { await page.goto("https://www.instagram.com/"); }
 async function openVideo() {
-    await openHome();
+    await page.goto("https://www.instagram.com/example/");
     await page.locator("#selected").click({position:{x:100,y:100}});
     await player().waitFor();
 }
@@ -93,7 +133,7 @@ test("wheel/touch and URL-less SPA navigation cannot advance to suggestions", as
         return {blocked:move.defaultPrevented,path:location.pathname};
     });
     assert.equal(result.blocked, true);
-    assert.equal(result.path, "/");
+    assert.equal(result.path, "/example/");
     const wheelBlocked = await page.evaluate(() => {
         const event = new WheelEvent("wheel", {deltaY:1200,bubbles:true,cancelable:true});
         window.dispatchEvent(event);
@@ -105,7 +145,7 @@ test("wheel/touch and URL-less SPA navigation cannot advance to suggestions", as
     assert.equal(await player().locator("video").getAttribute("id"), "selected");
     assert.equal(await page.locator("#suggested").evaluate(v=>v.paused), true);
 });
-test("a swipe started on inline video opens the player; Story swipes stay free", async () => {
+test("Home video swipes stay inline; Story swipes stay free", async () => {
     await openHome();
     const blocked = await page.locator("#selected").evaluate(v => {
         v.dispatchEvent(new Event("touchstart", {bubbles:true}));
@@ -113,8 +153,8 @@ test("a swipe started on inline video opens the player; Story swipes stay free",
         v.dispatchEvent(move);
         return move.defaultPrevented;
     });
-    assert.equal(blocked, true);
-    assert.equal(await player().count(), 1);
+    assert.equal(blocked, false);
+    assert.equal(await player().count(), 0);
     await page.goto("https://www.instagram.com/stories/person/123/");
     const storyBlocked = await page.locator("#selected").evaluate(v => {
         v.dispatchEvent(new Event("touchstart", {bubbles:true}));
@@ -125,12 +165,12 @@ test("a swipe started on inline video opens the player; Story swipes stay free",
     assert.equal(storyBlocked, false);
     assert.equal(await player().count(), 0);
 });
-test("closing inline player restores the same Home document and video", async () => {
+test("closing profile player restores the same document and video", async () => {
     await openVideo();
     await page.getByRole("button", {name:"Close",exact:true}).click();
     assert.equal(await player().count(), 0);
     assert.equal(await page.locator("article #selected").count(), 1);
-    assert.equal(page.url(), "https://www.instagram.com/");
+    assert.equal(page.url(), "https://www.instagram.com/example/");
     assert.equal(await page.locator("#stories").isVisible(), true);
     assert.ok((await page.evaluate(()=>bridgeEvents)).includes("player-close"));
 });

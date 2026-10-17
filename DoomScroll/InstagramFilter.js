@@ -27,6 +27,7 @@
         dmBaseline.clear();
         try { sessionStorage.removeItem(dmKey); } catch {}
     };
+    const isHome = () => location.pathname === "/";
     const isDM = () => /^\/direct\//.test(location.pathname);
     const isStory = () => /^\/stories\//i.test(location.pathname);
     const isReelPage = () => /^\/(?:reel|reels|tv)\/[^/]+\/?$/i.test(location.pathname);
@@ -72,7 +73,7 @@
     window.addEventListener("doomscroll-close-player", closePlayer);
 
     function createPlayer() {
-        if (player || !document.documentElement) return;
+        if (isHome() || player || !document.documentElement) return;
         const host = document.createElement("div");
         host.id = "doomscroll-player";
         const shadow = host.attachShadow({ mode: "open" });
@@ -106,7 +107,7 @@
     }
 
     function isolate(video) {
-        if ((isStory() && !dmIntent) || dismissed || player?.video) return;
+        if (isHome() || (isStory() && !dmIntent) || dismissed || player?.video) return;
         createPlayer();
         if (!player) return;
         const active = player;
@@ -200,6 +201,7 @@
         dismissed = false;
     }
     function captureDMVideo(preferred) {
+        if (isHome()) { clearIntent(); return; }
         if (!dmIntent || player?.video) return;
         if (Date.now() - dmIntent.at >= 15000) { clearIntent(); return; }
         const candidates = preferred ? [preferred] : Array.from(document.querySelectorAll("video"));
@@ -223,6 +225,8 @@
         if (isStory() && !dmIntent) return;
         const anchor = event.target.closest?.("a[href]");
         if (anchor && blocked(anchor.href)) { stop(event); notify("blocked"); return; }
+        // Home media taps and carousel controls belong to Instagram's feed.
+        if (isHome()) return;
         if (anchor && postID(anchor.href)) { stop(event); location.assign(anchor.href); return; }
         armDMPreview(event.target);
         const video = tappedVideo(event.target);
@@ -237,23 +241,13 @@
     window.addEventListener("pointerdown", event => {
         if (!player && !isStory()) armDMPreview(event.target);
     }, true);
-    let touchedVideo = null;
     window.addEventListener("touchstart", event => {
         if (!player && !isStory()) armDMPreview(event.target);
-        touchedVideo = !player && !isStory() ? tappedVideo(event.target) : null;
     }, { capture: true, passive: true });
-    window.addEventListener("touchend", () => { touchedVideo = null; }, true);
-    window.addEventListener("touchcancel", () => { touchedVideo = null; }, true);
 
-    // A swipe begun on a video opens the one-video player rather than a Reel feed.
-    // Swipes elsewhere on Home/DMs and all Story gestures remain unchanged.
+    // Lock gestures only after a selected video has opened in the player.
     for (const name of ["touchmove", "wheel"]) {
         window.addEventListener(name, event => {
-            if (!player && touchedVideo && name === "touchmove") {
-                dismissed = false;
-                isolate(touchedVideo);
-                touchedVideo = null;
-            }
             if (player) stop(event);
         },
             { capture: true, passive: false });

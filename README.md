@@ -29,9 +29,10 @@ This version moves the selected video element into a modal dialog with a separat
 Shadow DOM layout. Instagram's suggestions and nested scroll containers stay
 behind the modal instead of sharing the playback surface.
 
-- Tapping a video on Home or in messages opens that particular video.
-- A swipe begun on an inline video opens the player and cancels the swipe.
-  Swiping other page areas scrolls Home/messages normally.
+- Home-feed videos play inline; video taps and carousel controls stay in the feed.
+- Swipes do not open the player, including horizontal swipes on video carousels.
+- Tapping a video outside Home (including messages) opens that particular video.
+  Scrolling is locked only while the single-video player is open.
 - Shared Reel permalinks load the selected post, then isolate its primary video.
 - The player fits the WebView width/height with object-fit: contain, including
   rotation. No clipping/overflow rule is applied to the normal Instagram page.
@@ -69,7 +70,8 @@ After installing the latest successful DoomScroll-unsigned-ipa artifact:
 4. Tap Play with sound, then test pause/replay and the phone's media volume.
 5. Try scrolling/swiping to suggestions; only the selected video should remain.
 6. Close it. Confirm normal Home/message scrolling is restored.
-7. Repeat by tapping or swiping a Reel preview on Home.
+7. On Home, tap and scroll across videos and swipe video carousels left and right.
+   Confirm playback stays inline and no single-video dialog opens.
 
 Login remains in persistent WebKit website storage. DoomScroll has no separate
 backend, does not read passwords or message text, and does not log page HTML.
