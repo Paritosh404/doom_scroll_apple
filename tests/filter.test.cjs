@@ -44,6 +44,46 @@ beforeEach(async () => {
 });
 afterEach(async () => { await context?.close(); });
 const player = () => page.locator("#doomscroll-player");
+test("Home audio initializes Instagram state and icon; one click mutes", async () => {
+    await openHome();
+    await page.evaluate(() => {
+        const video = document.querySelector("#selected");
+        let muted = true;
+        const button = document.createElement("button");
+        button.id = "instagram-audio";
+        button.setAttribute("aria-label", "Unmute");
+        button.onclick = () => {
+            muted = !muted;
+            video.muted = muted;
+            button.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+        };
+        document.querySelector("#video-wrapper").append(button);
+    });
+    await page.waitForFunction(() => document.querySelector("#instagram-audio").getAttribute("aria-label") === "Mute");
+    assert.equal(await page.locator("#selected").evaluate(v => v.muted), false);
+    await page.locator("#instagram-audio").dispatchEvent("click");
+    assert.equal(await page.locator("#selected").evaluate(v => v.muted), true);
+    assert.equal(await page.locator("#instagram-audio").getAttribute("aria-label"), "Unmute");
+    assert.equal(await player().count(), 0);
+});
+test("message audio starts on despite late mute and has a bottom-right toggle", async () => {
+    await openVideo();
+    const video = player().locator("video");
+    await video.evaluate(v => { v.muted = true; v.volume = 0; v.dispatchEvent(new Event("loadedmetadata")); });
+    await page.waitForFunction(() => {
+        const v = document.querySelector("#doomscroll-player").shadowRoot.querySelector("video");
+        return !v.muted && v.volume === 1;
+    });
+    const button = player().getByRole("button", {name:"Mute audio", exact:true});
+    const box = await button.boundingBox();
+    assert.ok(box.x > 195 && box.y > 700 && box.x + box.width <= 390 && box.y + box.height <= 844);
+    await button.click();
+    assert.equal(await video.evaluate(v => v.muted), true);
+    await video.evaluate(v => v.dispatchEvent(new Event("playing")));
+    assert.equal(await video.evaluate(v => v.muted), true);
+    await player().getByRole("button", {name:"Unmute audio", exact:true}).click();
+    assert.equal(await video.evaluate(v => v.muted), false);
+});
 test("Home SPA post navigation and nearby taps never create our player", async () => {
     await openHome();
     const marker = await page.evaluate(() => {
@@ -202,12 +242,15 @@ test("Home video swipes stay inline; Story swipes stay free", async () => {
 });
 test("closing message player restores the conversation", async () => {
     await openVideo();
-    await page.getByRole("button", {name:"Close",exact:true}).click();
+    await Promise.all([
+        page.waitForEvent("domcontentloaded"),
+        page.getByRole("button", {name:"Close",exact:true}).click()
+    ]);
     assert.equal(await player().count(), 0);
     assert.equal(await page.locator("article #selected").count(), 1);
     assert.equal(page.url(), "https://www.instagram.com/direct/t/123/");
     assert.equal(await page.locator("#stories").isVisible(), true);
-    assert.ok((await page.evaluate(()=>bridgeEvents)).includes("player-close"));
+    assert.equal(await page.evaluate(() => sessionStorage.getItem("doomscroll-dm-video-intent")), null);
 });
 test("shared Reel permalink isolates only its selected video", async () => {
     await page.goto("https://www.instagram.com/direct/t/123/");
@@ -250,6 +293,29 @@ async function delayedDMViewer(storyRoute = false) {
     await page.locator("#dm-preview img").click();
     await player().locator("#dm-selected").waitFor();
 }
+test("closing a same-URL DM viewer reloads the conversation without exposing suggestions", async () => {
+    await delayedDMViewer();
+    const navigated = page.waitForEvent("domcontentloaded");
+    const transition = await page.evaluate(() => {
+        const host = document.querySelector("#doomscroll-player");
+        host.shadowRoot.querySelector("#close").click();
+        const event = new Event("touchmove", {bubbles:true,cancelable:true});
+        window.dispatchEvent(event);
+        history.pushState({}, "", "/reel/SUGGESTED/");
+        return {
+            modal: host.shadowRoot.querySelector("dialog").open,
+            paused: host.shadowRoot.querySelector("video").paused,
+            blocked: event.defaultPrevented,
+            path: location.pathname
+        };
+    });
+    assert.deepEqual(transition, {modal:true, paused:true, blocked:true, path:"/direct/t/123/"});
+    await navigated;
+    assert.equal(await player().count(), 0);
+    assert.equal(await page.locator("#dm-next").count(), 0);
+    assert.equal(await page.locator("#dm-selected").count(), 0);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem("doomscroll-dm-video-intent")), null);
+});
 test("DM image preview with delayed same-URL viewer gets sound and scroll lock", async () => {
     await delayedDMViewer();
     assert.equal(page.url(),"https://www.instagram.com/direct/t/123/");

@@ -58,6 +58,18 @@
     function closePlayer() {
         if (!player) return;
         const old = player;
+        if (old.dmReturnURL) {
+            old.video?.pause();
+            clearIntent();
+            // Instagram can open its suggested viewer without changing the DM URL.
+            // Keep the modal and gesture lock until a fresh conversation replaces it.
+            old.shadow.querySelector(".status").hidden = false;
+            old.shadow.querySelector(".status").textContent = "Returning to messages…";
+            notify("player-close");
+            // Allow the native navigation delegate to unlock before navigating.
+            setTimeout(() => location.replace(old.dmReturnURL), 0);
+            return;
+        }
         player = null;
         dismissed = true;
         old.video?.pause();
@@ -65,13 +77,7 @@
         else old.video?.remove();
         old.dialog.close();
         old.host.remove();
-        if (old.dmReturnURL) {
-            notify("player-close");
-            // Keep native scroll unlocked before requesting return navigation.
-            if (location.href !== old.dmReturnURL) {
-                setTimeout(() => location.assign(old.dmReturnURL), 0);
-            }
-        } else notify(entryID ? "player-return" : "player-close");
+        notify(entryID ? "player-return" : "player-close");
     }
     window.addEventListener("doomscroll-close-player", closePlayer);
 
@@ -95,9 +101,12 @@
             'width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;' +
             'margin:0!important;object-fit:contain!important;box-sizing:border-box!important}' +
             '.status{padding:8px 12px;flex:none;font-size:13px}' +
+            '.audio{display:flex;justify-content:flex-end;padding:8px max(12px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom));flex:none}' +
+            'video::-webkit-media-controls-mute-button,video::-webkit-media-controls-volume-slider{display:none}' +
             '</style><dialog aria-label="Single video"><div class="layout">' +
             '<div class="bar"><button id="close">Close</button></div>' +
             '<div class="stage"></div><div class="status">Loading the selected video…</div>' +
+            '<div class="audio"><button id="audio-toggle" aria-label="Mute audio">Sound on</button></div>' +
             '</div></dialog>';
         const dialog = shadow.querySelector("dialog");
         player = { host, shadow, dialog, video: null, source: "", placeholder: null, failed: false };
@@ -130,6 +139,24 @@
         video.muted = false;
         video.volume = 1;
         active.shadow.querySelector(".stage").appendChild(video);
+        let mutedByUser = false;
+        const audioButton = active.shadow.querySelector("#audio-toggle");
+        const syncAudio = () => {
+            if (player !== active) return;
+            // Instagram may reapply its saved mute preference after loading media.
+            if (video.muted !== mutedByUser) video.muted = mutedByUser;
+            if (video.volume !== 1) video.volume = 1;
+            video.defaultMuted = mutedByUser;
+            audioButton.textContent = mutedByUser ? "Sound off" : "Sound on";
+            audioButton.setAttribute("aria-label", mutedByUser ? "Unmute audio" : "Mute audio");
+            audioButton.setAttribute("aria-pressed", String(mutedByUser));
+        };
+        audioButton.addEventListener("click", () => {
+            mutedByUser = !mutedByUser;
+            syncAudio();
+        });
+        for (const type of ["volumechange", "loadedmetadata", "playing"]) video.addEventListener(type, syncAudio);
+        syncAudio();
         active.shadow.querySelector(".status").hidden = true;
         const guardSource = () => {
             if (player !== active) return;
@@ -264,7 +291,34 @@
         if (player && ["ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "Home", "End"].includes(event.key)) stop(event);
     }, true);
     const soundInitialized = new WeakSet();
+    const homeSoundSynced = new WeakSet();
+    const homeSoundChosen = new WeakSet();
+    function homeAudioControl(media) {
+        const container = media.closest("article") || media.parentElement;
+        if (!container || container.querySelectorAll("video").length !== 1) return null;
+        return Array.from(container.querySelectorAll('button, [role="button"]')).find(button =>
+            /^(unmute|mute|audio muted|audio playing|turn (on|off) sound|turn audio (on|off))( audio)?$/i.test(
+                button.getAttribute("aria-label") || button.querySelector("[aria-label]")?.getAttribute("aria-label") || ""));
+    }
+    function syncHomeSound(media) {
+        if (!isHome() || homeSoundSynced.has(media) || homeSoundChosen.has(media)) return;
+        const control = homeAudioControl(media);
+        if (!control) return;
+        homeSoundSynced.add(media);
+        const label = control.getAttribute("aria-label") || control.querySelector("[aria-label]")?.getAttribute("aria-label") || "";
+        // Use Instagram's own action so its icon and internal state change together.
+        if (/^(unmute|audio muted|turn on sound|turn audio on)/i.test(label)) control.click();
+    }
+    window.addEventListener("click", event => {
+        if (!isHome() || !event.isTrusted) return;
+        document.querySelectorAll("video").forEach(media => {
+            const control = homeAudioControl(media);
+            if (control?.contains(event.target)) homeSoundChosen.add(media);
+        });
+    }, true);
     const defaultSound = media => {
+        syncHomeSound(media);
+        if (homeSoundChosen.has(media)) return;
         if (soundInitialized.has(media)) return;
         soundInitialized.add(media);
         media.defaultMuted = false;
@@ -301,6 +355,7 @@
 
     function refresh() {
         scheduled = false;
+        if (isHome()) document.querySelectorAll("video").forEach(syncHomeSound);
         captureDMVideo();
         if (isStory()) return;
         if (dmIntent && !player && !dismissed && isReelPage()) createPlayer();
